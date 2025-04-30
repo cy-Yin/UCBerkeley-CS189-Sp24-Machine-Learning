@@ -1,0 +1,9 @@
+.DS_Store
+.vscode
+*.pyc
+__pycache__
+*.pyo
+*.pyd
+*.npy
+*.npz
+lecture notes/machlearn.pdf
