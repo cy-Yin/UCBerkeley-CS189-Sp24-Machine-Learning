@@ -141,6 +141,45 @@ def freq_and_feature(text, freq):
 def example_feature(text, freq):
     return int('example' in text)
 
+def freq_cheap_feature(text, freq):
+    return float(freq['cheap'])
+
+def freq_urgent_feature(text, freq):
+    return float(freq['urgent'])
+
+def freq_important_feature(text, freq):
+    return float(freq['important'])
+
+def freq_free_feature(text, freq):
+    return float(freq['free'])
+
+def freq_discount_feature(text, freq):
+    return float(freq['discount'])
+
+def freq_earn_feature(text, freq):
+    return float(freq['earn'])
+
+def freq_earnings_feature(text, freq):
+    return float(freq['earnings'])
+
+def freq_click_feature(text, freq):
+    return float(freq['click'])
+
+def freq_lose_feature(text, freq):
+    return float(freq['lose'])
+
+def freq_billion_feature(text, freq):
+    return float(freq['billion'])
+
+def freq_investment_feature(text, freq):
+    return float(freq['investment'])
+
+def freq_loan_feature(text, freq):
+    return float(freq['loan'])
+
+def freq_million_feature(text, freq):
+    return float(freq['million'])
+
 # Generates a feature vector
 def generate_feature_vector(text, freq):
     feature = []
@@ -179,6 +218,19 @@ def generate_feature_vector(text, freq):
 
     # --------- Add your own features here ---------
     # Make sure type is int or float
+    feature.append(freq_cheap_feature(text, freq))
+    feature.append(freq_urgent_feature(text, freq))
+    feature.append(freq_important_feature(text, freq))
+    feature.append(freq_free_feature(text, freq))
+    feature.append(freq_discount_feature(text, freq))
+    feature.append(freq_earn_feature(text, freq))
+    feature.append(freq_earnings_feature(text, freq))
+    feature.append(freq_click_feature(text, freq))
+    feature.append(freq_lose_feature(text, freq))
+    feature.append(freq_billion_feature(text, freq))
+    feature.append(freq_investment_feature(text, freq))
+    feature.append(freq_loan_feature(text, freq))
+    feature.append(freq_million_feature(text, freq))
 
     return feature
 
