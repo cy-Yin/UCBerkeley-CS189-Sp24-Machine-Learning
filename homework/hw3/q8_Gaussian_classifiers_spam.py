@@ -4,7 +4,7 @@ from scripts.save_csv import results_to_csv
 np.random.seed(42)
 
 # Load mnist data
-mnist_data = np.load((f"data/spam-data-hw3.npz"))
+mnist_data = np.load((f"data/spam-data.npz"))
 fields = "test_data", "training_data", "training_labels"
 test_data = mnist_data[fields[0]]
 training_data = mnist_data[fields[1]]
