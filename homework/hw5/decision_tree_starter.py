@@ -10,6 +10,7 @@ import scipy.io
 from sklearn.tree import DecisionTreeClassifier, export_graphviz
 from sklearn.base import BaseEstimator, ClassifierMixin
 from sklearn.model_selection import cross_val_score
+from sklearn.metrics import nan_euclidean_distances
 from pydot import graph_from_dot_data
 import io
 
@@ -32,22 +33,59 @@ class DecisionTree:
     @staticmethod
     def entropy(y):
         # TODO
-        pass
+        # entropy = - \sum(p * log2(p))
+        probs = []
+        entropy = 0
+        y_size = len(y)
+        for label in np.unique(y):
+            probs.append(np.sum(y == label) / y_size)
+        for p in probs:
+            entropy -= p * np.log2(p + eps) # add eps to avoid log(0)
+        return entropy
 
     @staticmethod
     def information_gain(X, y, thresh):
         # TODO
-        return np.random.rand()
+        # H_after = (|S_l| * H(S_l) + |S_r| * H(S_r)) / |S|
+        entropy_before = DecisionTree.entropy(y)
+        X_left_size = np.sum(X < thresh)
+        X_right_size = np.sum(X >= thresh)
+        entropy_left = DecisionTree.entropy(y[X < thresh])
+        entropy_right = DecisionTree.entropy(y[X >= thresh])
+        entropy_after = (X_left_size * entropy_left + X_right_size * entropy_right) / len(X)
+        info_gain = entropy_before - entropy_after
+        return info_gain
 
     @staticmethod
     def gini_impurity(X, y, thresh):
         # TODO
-        pass
+        probs_left = []
+        probs_right = []
+        y_left = y[X < thresh]
+        y_right = y[X >= thresh]
+        y_left_size = len(y_left)
+        y_right_size = len(y_right)
+        for label_left in np.unique(y_left):
+            probs_left.append(np.sum(y_left == label_left) / y_left_size)
+        for label_right in np.unique(y_right):
+            probs_right.append(np.sum(y_right == label_right) / y_right_size)
+        gini_left = 1 - sum([p ** 2 for p in probs_left])
+        gini_right = 1 - sum([p ** 2 for p in probs_right])
+        gini = (y_left_size * gini_left + y_right_size * gini_right) / len(y)
+        return gini
 
     @staticmethod
     def gini_purification(X, y, thresh):
-        # TODO
-        pass
+        # TODO same function as information gain but for gini impurity
+        probs = []
+        y_size = len(y)
+        for label in np.unique(y):
+            probs.append(np.sum(y == label) / y_size)
+        gini_before = 1 - sum([p ** 2 for p in probs])
+        gini_after = DecisionTree.gini_impurity(X, y, thresh)
+        gini_purification = gini_before - gini_after
+        return gini_purification
+
 
     def split(self, X, y, idx, thresh):
         X0, idx0, X1, idx1 = self.split_test(X, idx=idx, thresh=thresh)
@@ -62,11 +100,54 @@ class DecisionTree:
 
     def fit(self, X, y):
         # TODO
-        pass
+        n_samples, n_features = X.shape
+        if self.max_depth == 0 or len(np.unique(y)) == 1: # leaf node
+            self.pred = Counter(y).most_common(1)[0][0] # choose the majority class as prediction
+            self.data, self.labels = X, y
+        else:
+            # split the node with the best feature and threshold according to information gain
+            best_info_gain = -np.inf
+            best_feature_idx = None
+            best_thresh = None
+            for feature_idx in range(n_features):
+                thresholds = np.unique(X[:, feature_idx])
+                for thresh in thresholds:
+                    info_gain = DecisionTree.information_gain(X[:, feature_idx], y, thresh)
+                    if info_gain > best_info_gain:
+                        best_info_gain = info_gain
+                        best_feature_idx = feature_idx
+                        best_thresh = thresh
+            # create left and right child nodes
+            self.split_idx = best_feature_idx
+            self.thresh = best_thresh
+            X_left, y_left, X_right, y_right = self.split(X, y, self.split_idx, self.thresh)
+            if X_left.shape[0] == 0 or X_right.shape[0] == 0: # cannot split further
+                self.pred = Counter(y).most_common(1)[0][0]
+                self.data, self.labels = X, y
+            else:
+                self.thresh = best_thresh
+                self.split_idx = best_feature_idx
+                self.left = DecisionTree(max_depth=self.max_depth - 1, feature_labels=self.features)
+                self.left.fit(X_left, y_left)
+                self.right = DecisionTree(max_depth=self.max_depth - 1, feature_labels=self.features)
+                self.right.fit(X_right, y_right)
 
     def predict(self, X):
         # TODO
-        pass
+        n_samples, n_features = X.shape
+        y_pred = np.zeros(n_samples, dtype=int)
+        for idx in range(n_samples):
+            node = self
+            while node.max_depth > 0:
+                if node.left is None and node.right is None: # leaf node, now predict
+                    break
+                # traverse the tree until reaching a leaf node
+                if X[idx, node.split_idx] < node.thresh:
+                    node = node.left
+                else:
+                    node = node.right
+            y_pred[idx] = node.pred
+        return y_pred
 
     def __repr__(self):
         if self.max_depth == 0:
@@ -91,11 +172,23 @@ class BaggedTrees(BaseEstimator, ClassifierMixin):
 
     def fit(self, X, y):
         # TODO
-        pass
+        n_samples, n_features = X.shape
+        sample_size = n_samples  # bootstrap sample size equals to original data size
+        for tree_idx in range(self.n):
+            sample_indices = np.random.choice(n_samples, size=n_samples, replace=True)
+            X_sample, y_sample = X[sample_indices], y[sample_indices]
+            self.decision_trees[tree_idx].fit(X_sample, y_sample)
 
     def predict(self, X):
         # TODO
-        pass
+        n_samples, n_features = X.shape
+        votes = np.zeros((n_samples, self.n), dtype=int)
+        for tree_idx in range(self.n):
+            votes[:, tree_idx] = self.decision_trees[tree_idx].predict(X)
+        # here I choose first calculate the mean prediction over all trees,
+        # which is easy to change later if in some cases the probabilities are needed.
+        y_pred = np.array(np.mean(votes, axis=1) >= 0.5, dtype=int)
+        return y_pred
 
 
 class RandomForest(BaggedTrees):
@@ -123,7 +216,7 @@ def preprocess(data, fill_mode=True, min_freq=10, onehot_cols=[]):
     # fill_mode = False
 
     # Temporarily assign -1 to missing data
-    data[data == b''] = '-1'
+    data[data == ''] = '-1'
 
     # Hash the columns (used for handling strings)
     onehot_encoding = []
@@ -131,7 +224,7 @@ def preprocess(data, fill_mode=True, min_freq=10, onehot_cols=[]):
     for col in onehot_cols:
         counter = Counter(data[:, col])
         for term in counter.most_common():
-            if term[0] == b'-1':
+            if term[0] == '-1':
                 continue
             if term[-1] <= min_freq:
                 break
@@ -148,7 +241,29 @@ def preprocess(data, fill_mode=True, min_freq=10, onehot_cols=[]):
     # features such as gender or cabin type, which are not ordered.
     if fill_mode:
         # TODO
-        pass
+        # use k-nearest neighbors to fill in missing data
+        # Here I just manually implement my dumpy version of KNN imputer.
+        # One can also use the official sklearn's KNNImputer as follows:
+        #
+        # imputer = sklearn.impute.KNNImputer(n_neighbors=7, missing_values=-1)
+        # data = imputer.fit_transform(data)
+        #
+        n_samples, n_features = data.shape
+        data_copy = data.copy()
+        distances = nan_euclidean_distances(data_copy, data_copy, missing_values=-1)
+        for i in range(n_samples):
+            for j in range(n_features):
+                if data_copy[i, j] == -1: # missing value
+                    # find k nearest neighbors
+                    valid_indices = [m for m in range(n_samples) if data_copy[m, j] != -1 and m != i]
+                    if not valid_indices:
+                        continue
+                    
+                    valid_distances = np.array([distances[i, m] for m in valid_indices])
+                    k = 7
+                    neighbor_indices = [valid_indices[idx] for idx in np.argsort(valid_distances)[:k]]
+                    neighbor_values_j = [data_copy[idx, j] for idx in neighbor_indices]
+                    data[i, j] = np.mean(neighbor_values_j)
 
     return data, onehot_features
 
@@ -167,7 +282,7 @@ if __name__ == "__main__":
     dataset = "titanic"
     # dataset = "spam"
     params = {
-        "max_depth": 5,
+        "max_depth": 7,
         # "random_state": 6,
         "min_samples_leaf": 10,
     }
@@ -232,3 +347,5 @@ if __name__ == "__main__":
     graph_from_dot_data(out.getvalue())[0].write_pdf("%s-tree.pdf" % dataset)
     
     # TODO
+    # The code above generates a decision tree PDF file for the official sklearn's decision tree.
+    # For my own decision tree, I will train and predict in another .ipynb file.
