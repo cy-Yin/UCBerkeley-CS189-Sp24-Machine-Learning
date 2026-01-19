@@ -73,7 +73,7 @@ data_args = AttrDict(
 )
 
 log_args = AttrDict(
-    {"save": True, "plot": True, "save_dir": "experiments/",}
+    {"save": True, "plot": True, "save_dir": "experiments_ffnn/",}
 )
 
 """

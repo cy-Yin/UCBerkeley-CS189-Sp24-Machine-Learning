@@ -89,7 +89,8 @@ class Sigmoid(Activation):
         f(z) as described above applied elementwise to `Z`
         """
         ### YOUR CODE HERE ###
-        return ...
+        sigmoid = 1 / (1 + np.exp(-Z))
+        return sigmoid
 
     def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
         """Backward pass for sigmoid.
@@ -105,7 +106,11 @@ class Sigmoid(Activation):
         gradient of loss w.r.t. input of this layer
         """
         ### YOUR CODE HERE ###
-        return ...
+        # the derivative of sigmoid function is sigmoid(z) * (1 - sigmoid(z))
+        sigmoid = self.forward(Z)
+        dsigmoid_dZ = sigmoid * (1 - sigmoid)
+        dZ = dY * dsigmoid_dZ # "*" represents elementwise multiplication
+        return dZ
 
 
 class TanH(Activation):
@@ -159,7 +164,7 @@ class ReLU(Activation):
         f(z) as described above applied elementwise to `Z`
         """
         ### YOUR CODE HERE ###
-        return ...
+        return np.maximum(0, Z)
 
     def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
         """Backward pass for relu activation.
@@ -175,7 +180,11 @@ class ReLU(Activation):
         gradient of loss w.r.t. input of this layer
         """
         ### YOUR CODE HERE ###
-        return ...
+        reLU = self.forward(Z)
+        dYdZ = (reLU > 0).astype(float)
+        dZ = dY * dYdZ # "*" represents elementwise multiplication 
+                         # rather than matrix multiplication
+        return dZ
 
 
 class SoftMax(Activation):
@@ -195,7 +204,11 @@ class SoftMax(Activation):
         f(z) as described above applied elementwise to `Z`
         """
         ### YOUR CODE HERE ###
-        return ...
+        max_Z = np.max(Z, axis=-1, keepdims=True)
+        exp_Z = np.exp(Z - max_Z)
+        exp_Z_sum = np.sum(exp_Z, axis=-1, keepdims=True)
+        sigma = exp_Z / exp_Z_sum
+        return sigma
 
     def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
         """Backward pass for softmax activation.
@@ -211,7 +224,22 @@ class SoftMax(Activation):
         gradient of loss w.r.t. input of this layer
         """
         ### YOUR CODE HERE ###
-        return ...
+        sigma = self.forward(Z)
+        batch_size, n_classes = Z.shape
+
+        dZ = np.zeros_like(Z)
+        # if i == j, dsigma_i / dZ_j = sigma_i * (1 - sigma_i)
+        # if i != j, dsigma_i / dZ_j = -sigma_i * sigma_j
+        # which means dsigma / dZ can be rewritten as (diag(sigma) - sigma * sigma^T)
+        for i in range(batch_size):
+            sigma_example = sigma[i]
+            diag = np.diagflat(sigma_example)
+            outer_product = np.outer(sigma_example, sigma_example) # calculate sigma * sigma^T
+            dsigma_dZ_example = diag - outer_product
+            dZ[i] = dY[i] @ dsigma_dZ_example # for each example in the mini-batch, 
+                                              # calculate dL/dZ = dL/dsigma * dsigma/dZ
+
+        return dZ
 
 
 class ArcTan(Activation):

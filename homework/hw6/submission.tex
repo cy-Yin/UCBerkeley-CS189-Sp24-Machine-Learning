@@ -1,0 +1,831 @@
+\documentclass{article}[a4paper,11pt]
+
+\usepackage[a4paper,left=2cm,right=2cm,top=2cm,bottom=2cm]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\lstset{
+language=Python,
+basicstyle=\ttfamily\small,
+breaklines=true,
+postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
+columns=flexible,
+frame=single,
+numbers=left,
+numberstyle=\tiny\color{gray},
+keywordstyle=\color{blue}\bfseries,
+commentstyle=\color{gray},
+stringstyle=\color{orange},
+showstringspaces=false,
+}
+
+\begin{document}
+
+\section{Activation Function Implementations:}
+
+Implementation of \texttt{activations.Linear}:
+
+\begin{lstlisting}[language=Python]
+class Linear(Activation):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, Z: np.ndarray) -> np.ndarray:
+        """Forward pass for f(z) = z.
+        
+        Parameters
+        ----------
+        Z  input pre-activations (any shape)
+
+        Returns
+        -------
+        f(z) as described above applied elementwise to `Z`
+        """
+        return Z
+
+    def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
+        """Backward pass for f(z) = z.
+        
+        Parameters
+        ----------
+        Z   input to `forward` method
+        dY  gradient of loss w.r.t. the output of this layer
+            same shape as `Z`
+
+        Returns
+        -------
+        gradient of loss w.r.t. input of this layer
+        """
+        return dY
+
+\end{lstlisting}
+
+Implementation of \texttt{activations.Sigmoid}:
+
+\begin{lstlisting}[language=Python]
+class Sigmoid(Activation):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, Z: np.ndarray) -> np.ndarray:
+        """Forward pass for sigmoid function:
+        f(z) = 1 / (1 + exp(-z))
+        
+        Parameters
+        ----------
+        Z  input pre-activations (any shape)
+
+        Returns
+        -------
+        f(z) as described above applied elementwise to `Z`
+        """
+        ### YOUR CODE HERE ###
+        sigmoid = 1 / (1 + np.exp(-Z))
+        return sigmoid
+
+    def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
+        """Backward pass for sigmoid.
+        
+        Parameters
+        ----------
+        Z   input to `forward` method
+        dY  gradient of loss w.r.t. the output of this layer
+            same shape as `Z`
+
+        Returns
+        -------
+        gradient of loss w.r.t. input of this layer
+        """
+        ### YOUR CODE HERE ###
+        # the derivative of sigmoid function is sigmoid(z) * (1 - sigmoid(z))
+        sigmoid = self.forward(Z)
+        dsigmoid_dZ = sigmoid * (1 - sigmoid)
+        dZ = dY * dsigmoid_dZ # "*" represents elementwise multiplication
+        return dZ
+
+\end{lstlisting}
+
+Implementation of \texttt{activations.ReLU}:
+
+\begin{lstlisting}[language=Python]
+class ReLU(Activation):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, Z: np.ndarray) -> np.ndarray:
+        """Forward pass for relu activation:
+        f(z) = z if z >= 0
+               0 otherwise
+        
+        Parameters
+        ----------
+        Z  input pre-activations (any shape)
+
+        Returns
+        -------
+        f(z) as described above applied elementwise to `Z`
+        """
+        ### YOUR CODE HERE ###
+        return np.maximum(0, Z)
+
+    def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
+        """Backward pass for relu activation.
+        
+        Parameters
+        ----------
+        Z   input to `forward` method
+        dY  gradient of loss w.r.t. the output of this layer
+            same shape as `Z`
+
+        Returns
+        -------
+        gradient of loss w.r.t. input of this layer
+        """
+        ### YOUR CODE HERE ###
+        reLU = self.forward(Z)
+        dYdZ = (reLU > 0).astype(float)
+        dZ = dY * dYdZ # "*" represents elementwise multiplication 
+                         # rather than matrix multiplication
+        return dZ
+
+\end{lstlisting}
+
+Implementation of \texttt{activations.SoftMax}:
+
+\begin{lstlisting}[language=Python]
+class SoftMax(Activation):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, Z: np.ndarray) -> np.ndarray:
+        """Forward pass for softmax activation.
+        Hint: The naive implementation might not be numerically stable.
+        
+        Parameters
+        ----------
+        Z  input pre-activations (any shape)
+
+        Returns
+        -------
+        f(z) as described above applied elementwise to `Z`
+        """
+        ### YOUR CODE HERE ###
+        max_Z = np.max(Z, axis=-1, keepdims=True)
+        exp_Z = np.exp(Z - max_Z)
+        exp_Z_sum = np.sum(exp_Z, axis=-1, keepdims=True)
+        sigma = exp_Z / exp_Z_sum
+        return sigma
+
+    def backward(self, Z: np.ndarray, dY: np.ndarray) -> np.ndarray:
+        """Backward pass for softmax activation.
+        
+        Parameters
+        ----------
+        Z   input to `forward` method
+        dY  gradient of loss w.r.t. the output of this layer
+            same shape as `Z`
+
+        Returns
+        -------
+        gradient of loss w.r.t. input of this layer
+        """
+        ### YOUR CODE HERE ###
+        sigma = self.forward(Z)
+        batch_size, n_classes = Z.shape
+
+        dZ = np.zeros_like(Z)
+        # if i == j, dsigma_i / dZ_j = sigma_i * (1 - sigma_i)
+        # if i != j, dsigma_i / dZ_j = -sigma_i * sigma_j
+        # which means dsigma / dZ can be rewritten as (diag(sigma) - sigma * sigma^T)
+        for i in range(batch_size):
+            sigma_example = sigma[i]
+            diag = np.diagflat(sigma_example)
+            outer_product = np.outer(sigma_example, sigma_example) # calculate sigma * sigma^T
+            dsigma_dZ_example = diag - outer_product
+            dZ[i] = dY[i] @ dsigma_dZ_example # for each example in the mini-batch, 
+                                              # calculate dL/dZ = dL/dsigma * dsigma/dZ
+
+        return dZ
+
+\end{lstlisting}
+
+
+\section{Layer Implementations:}
+
+Implementation of \texttt{layers.FullyConnected}:
+
+\begin{lstlisting}[language=Python]
+class FullyConnected(Layer):
+    """A fully-connected layer multiplies its input by a weight matrix, adds
+    a bias, and then applies an activation function.
+    """
+
+    def __init__(
+        self, n_out: int, activation: str, weight_init="xavier_uniform"
+    ) -> None:
+
+        super().__init__()
+        self.n_in = None
+        self.n_out = n_out
+        self.activation = initialize_activation(activation)
+
+        # instantiate the weight initializer
+        self.init_weights = initialize_weights(weight_init, activation=activation)
+
+    def _init_parameters(self, X_shape: Tuple[int, int]) -> None:
+        """Initialize all layer parameters (weights, biases)."""
+        self.n_in = X_shape[1]
+
+        ### BEGIN YOUR CODE ###
+
+        W = self.init_weights((self.n_in, self.n_out))
+        b = np.zeros((1, self.n_out))
+
+        self.parameters = OrderedDict({"W": W, "b": b}) # DO NOT CHANGE THE KEYS
+        self.cache: OrderedDict = OrderedDict({"Z": [], "X": []})  # cache for backprop
+        self.gradients: OrderedDict = OrderedDict(
+            {"W": np.zeros_like(W), "b": np.zeros_like(b)}
+        )  # parameter gradients initialized to zero
+                                           # MUST HAVE THE SAME KEYS AS `self.parameters`
+
+        ### END YOUR CODE ###
+
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        """Forward pass: multiply by a weight matrix, add a bias, apply activation.
+        Also, store all necessary intermediate results in the `cache` dictionary
+        to be able to compute the backward pass.
+
+        Parameters
+        ----------
+        X  input matrix of shape (batch_size, input_dim)
+
+        Returns
+        -------
+        a matrix of shape (batch_size, output_dim)
+        """
+        # initialize layer parameters if they have not been initialized
+        if self.n_in is None:
+            self._init_parameters(X.shape)
+
+        ### BEGIN YOUR CODE ###
+        
+        # perform an affine transformation and activation
+        Z = X @ self.parameters["W"] + self.parameters["b"]
+        out = self.activation.forward(Z)
+        
+        # store information necessary for backprop in `self.cache`
+        self.cache["X"] = X
+        self.cache["Z"] = Z
+
+        ### END YOUR CODE ###
+
+        return out
+
+    def backward(self, dLdY: np.ndarray) -> np.ndarray:
+        """Backward pass for fully connected layer.
+        Compute the gradients of the loss with respect to:
+            1. the weights of this layer (mutate the `gradients` dictionary)
+            2. the bias of this layer (mutate the `gradients` dictionary)
+            3. the input of this layer (return this)
+
+        Parameters
+        ----------
+        dLdY  gradient of the loss with respect to the output of this layer
+              shape (batch_size, output_dim)
+
+        Returns
+        -------
+        gradient of the loss with respect to the input of this layer
+        shape (batch_size, input_dim)
+        """
+        ### BEGIN YOUR CODE ###
+        
+        # unpack the cache
+        Z, X = self.cache["Z"], self.cache["X"]
+        
+        # compute the gradients of the loss w.r.t. all parameters as well as the
+        # input of the layer
+        dZ = self.activation.backward(Z, dLdY)
+        dX = dZ @ self.parameters["W"].T
+        dW = X.T @ dZ
+        # In section 4.2.1, we calculated dLdb = 1^T @ dLdz, 
+        # where 1 is a column of ones, shape of (m, 1), and m is the batch size.
+        # Here, 1^T @ dLdz = (1, m) @ (m, n_out) = (1, n_out),
+        # which is equivalent to summing dLdz over axis 0.
+        db = np.sum(dZ, axis=0, keepdims=True) 
+
+        # store the gradients in `self.gradients`
+        # the gradient for self.parameters["W"] should be stored in
+        # self.gradients["W"], etc.
+        self.gradients["W"] = dW
+        self.gradients["b"] = db
+
+        ### END YOUR CODE ###
+
+        return dX
+
+\end{lstlisting}
+
+Implementation of \texttt{layers.Pool2D}:
+
+\begin{lstlisting}[language=Python]
+class Pool2D(Layer):
+    """Pooling layer, implements max and average pooling."""
+
+    def __init__(
+        self,
+        kernel_shape: Tuple[int, int],
+        mode: str = "max",
+        stride: int = 1,
+        pad: Union[int, Literal["same"], Literal["valid"]] = 0,
+    ) -> None:
+
+        if type(kernel_shape) == int:
+            kernel_shape = (kernel_shape, kernel_shape)
+
+        self.kernel_shape = kernel_shape
+        self.stride = stride
+
+        if pad == "same":
+            self.pad = ((kernel_shape[0] - 1) // 2, (kernel_shape[1] - 1) // 2)
+        elif pad == "valid":
+            self.pad = (0, 0)
+        elif isinstance(pad, int):
+            self.pad = (pad, pad)
+        else:
+            raise ValueError("Invalid Pad mode found in self.pad.")
+
+        self.mode = mode
+
+        if mode == "max":
+            self.pool_fn = np.max
+            self.arg_pool_fn = np.argmax
+        elif mode == "average":
+            self.pool_fn = np.mean
+
+        self.cache = {
+            "out_rows": [],
+            "out_cols": [],
+            "X_pad": [],
+            "p": [],
+            "pool_shape": [],
+        }
+        self.parameters = {}
+        self.gradients = {}
+
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        """Forward pass: use the pooling function to aggregate local information
+        in the input. This layer typically reduces the spatial dimensionality of
+        the input while keeping the number of feature maps the same.
+
+        As with all other layers, please make sure to cache the appropriate
+        information for the backward pass.
+
+        Parameters
+        ----------
+        X  input array of shape (batch_size, in_rows, in_cols, channels)
+
+        Returns
+        -------
+        pooled array of shape (batch_size, out_rows, out_cols, channels)
+        """
+        ### BEGIN YOUR CODE ###
+
+        # implement the forward pass
+        kernel_height, kernel_width = self.kernel_shape
+        n_examples, in_rows, in_cols, channels = X.shape
+        out_rows = (in_rows + 2 * self.pad[0] - kernel_height) // self.stride + 1
+        out_cols = (in_cols + 2 * self.pad[1] - kernel_width) // self.stride + 1
+        # X shape: (n_examples, in_rows, in_cols, in_channels)
+        # we need to pad the 2nd and 3rd dimensions (height and width)
+        # and keep the rest the same which is done by set to (0,0) for those dimensions.
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        X_pool = np.zeros((n_examples, out_rows, out_cols, channels))
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_pool_slice = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # the effective receptive field for the pooling w.r.t. output pixel (i,j). shape of (n_examples, kernel_height, kernel_width, in_channels)
+                if self.mode == "max":
+                    X_pool[:, i, j, :] = np.max(X_pool_slice, axis=(1, 2))
+                elif self.mode == "average":
+                    X_pool[:, i, j, :] = np.mean(X_pool_slice, axis=(1, 2))
+
+        # cache any values required for backprop
+        self.cache["out_rows"] = out_rows
+        self.cache["out_cols"] = out_cols
+        self.cache["X_pad"] = X_pad
+        self.cache["p"] = self.pool_fn
+        self.cache["pool_shape"] = self.kernel_shape
+
+        ### END YOUR CODE ###
+
+        return X_pool
+
+    def backward(self, dLdY: np.ndarray) -> np.ndarray:
+        """Backward pass for pooling layer.
+
+        Parameters
+        ----------
+        dLdY  gradient of loss with respect to the output of this layer
+              shape (batch_size, out_rows, out_cols, channels)
+
+        Returns
+        -------
+        gradient of loss with respect to the input of this layer
+        shape (batch_size, in_rows, in_cols, channels)
+        """
+        ### BEGIN YOUR CODE ###
+
+        # perform a backward pass
+        # unpack the cache
+        out_rows, out_cols = self.cache["out_rows"], self.cache["out_cols"]
+        X_pad = self.cache["X_pad"]
+        pool_fn, pool_shape = self.cache["p"], self.cache["pool_shape"]
+
+        n_examples, padded_in_rows, padded_in_cols, channels = X_pad.shape
+        kernel_height, kernel_width = pool_shape
+
+        dX_pad = np.zeros_like(X_pad)
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_pool_slice = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :]
+                if self.mode == "max":
+                    # create a mask of the same shape as X_pool_slice
+                    # where the max value indices are set to 1, rest are 0
+                    max_mask = (X_pool_slice == np.max(X_pool_slice, axis=(1, 2), keepdims=True))
+                    # for max pooling, gradient flows only to the neurons which achieved the max
+                    # all other neurons get zero gradient
+                    # which is equivalent to elementwise multiplying dLdY with the mask
+                    dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                    += np.einsum("nc,nijc->nijc", dLdY[:, i, j, :], max_mask, optimize=True)
+                elif self.mode == "average":
+                    # for average pooling, gradient is equally divided among all neurons
+                    # create a mask of the same shape as X_pool_slice
+                    # where all values are 1 / (kernel_height * kernel_width)
+                    avg_mask = np.ones_like(X_pool_slice) / (kernel_height * kernel_width)
+                    dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                    += np.einsum("nc,nijc->nijc", dLdY[:, i, j, :], avg_mask, optimize=True)
+        
+        # unpad dX_pad to get dX
+        dX = dX_pad[:,
+                    self.pad[0] : padded_in_rows - self.pad[0],
+                    self.pad[1] : padded_in_cols - self.pad[1],
+                    :]
+
+        ### END YOUR CODE ###
+
+        return dX
+
+\end{lstlisting}
+
+Implementation of \texttt{layers.Conv2D.\_\_init\_\_}:
+
+\begin{lstlisting}[language=Python]
+    def __init__(
+        self,
+        n_out: int,
+        kernel_shape: Tuple[int, int],
+        activation: str,
+        stride: int = 1,
+        pad: str = "same",
+        weight_init: str = "xavier_uniform",
+    ) -> None:
+
+        super().__init__()
+        self.n_in = None
+        self.n_out = n_out
+        self.kernel_shape = kernel_shape
+        self.stride = stride
+        self.pad = pad
+
+        self.activation = initialize_activation(activation)
+        self.init_weights = initialize_weights(weight_init, activation=activation)
+
+\end{lstlisting}
+
+Implementation of \texttt{layers.Conv2D.\_init\_parameters}:
+
+\begin{lstlisting}[language=Python]
+    def _init_parameters(self, X_shape: Tuple[int, int, int, int]) -> None:
+        """Initialize all layer parameters and determine padding."""
+        self.n_in = X_shape[3]
+
+        W_shape = self.kernel_shape + (self.n_in,) + (self.n_out,)
+        W = self.init_weights(W_shape)
+        b = np.zeros((1, self.n_out))
+
+        self.parameters = OrderedDict({"W": W, "b": b}) # DO NOT CHANGE THE KEYS
+        self.cache = OrderedDict({"Z": [], "X": []}) # cache for backprop
+        self.gradients = OrderedDict({"W": np.zeros_like(W), "b": np.zeros_like(b)}) # parameter gradients initialized to zero
+                                                                                     # MUST HAVE THE SAME KEYS AS `self.parameters`
+
+        if self.pad == "same":
+            self.pad = ((W_shape[0] - 1) // 2, (W_shape[1] - 1) // 2)
+        elif self.pad == "valid":
+            self.pad = (0, 0)
+        elif isinstance(self.pad, int):
+            self.pad = (self.pad, self.pad)
+        else:
+            raise ValueError("Invalid Pad mode found in self.pad.")
+
+\end{lstlisting}
+
+Implementation of \texttt{layers.Conv2D.forward}:
+
+\begin{lstlisting}[language=Python]
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        """Forward pass for convolutional layer. This layer convolves the input
+        `X` with a filter of weights, adds a bias term, and applies an activation
+        function to compute the output. This layer also supports padding and
+        integer strides. Intermediates necessary for the backward pass are stored
+        in the cache.
+
+        Parameters
+        ----------
+        X  input with shape (batch_size, in_rows, in_cols, in_channels)
+
+        Returns
+        -------
+        output feature maps with shape (batch_size, out_rows, out_cols, out_channels)
+        """
+        if self.n_in is None:
+            self._init_parameters(X.shape)
+
+        W = self.parameters["W"]
+        b = self.parameters["b"]
+
+        kernel_height, kernel_width, in_channels, out_channels = W.shape
+        n_examples, in_rows, in_cols, in_channels = X.shape
+        kernel_shape = (kernel_height, kernel_width)
+
+        ### BEGIN YOUR CODE ###
+
+        # implement a convolutional forward pass
+        # compute output dimensions
+        out_rows = (in_rows + 2 * self.pad[0] - kernel_height) // self.stride + 1
+        out_cols = (in_cols + 2 * self.pad[1] - kernel_width) // self.stride + 1
+        Z = np.zeros((n_examples, out_rows, out_cols, out_channels))
+        # first pad the input X
+        # X shape: (n_examples, in_rows, in_cols, in_channels)
+        # we need to pad the 2nd and 3rd dimensions (height and width)
+        # and keep the rest the same which is done by set to (0,0) for those dimensions.
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        # use np.einsum for the convolution operation
+        # Z[d1, d2, n] = (X conv W)[d1, d2, n]
+        # = sum_i sum_k sum_c W[i, k, c, n] * X[d1 + i, d2 + k, c] + b[n]
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_conv = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # the effective receptive field for the convolution w.r.t. output pixel (i,j). shape of (n_examples, kernel_height, kernel_width, in_channels)
+                # W.shape: kernel_height, kernel_width, in_channels, out_channels
+                # X.shape: n_examples, in_rows, in_cols, in_channels
+                # out.shape: n_examples, out_rows, out_cols, out_channels
+                # einsum:
+                # sum(kernel_height * in_rows)
+                # sum(kernel_width * in_cols)
+                # keep n_examples, out_channels
+                Z[:, i, j, :] = np.einsum("ijkl,nijk->nl", W, X_conv, optimize=True) + b
+
+        out = self.activation.forward(Z)
+        
+        # cache any values required for backprop
+        self.cache["Z"] = Z
+        self.cache["X"] = X
+
+        ### END YOUR CODE ###
+
+        return out
+
+\end{lstlisting}
+
+Implementation of \texttt{layers.Conv2D.backward}:
+
+\begin{lstlisting}[language=Python]
+    def backward(self, dLdY: np.ndarray) -> np.ndarray:
+        """Backward pass for conv layer. Computes the gradients of the output
+        with respect to the input feature maps as well as the filter weights and
+        biases.
+
+        Parameters
+        ----------
+        dLdY  gradient of loss with respect to output of this layer
+              shape (batch_size, out_rows, out_cols, out_channels)
+
+        Returns
+        -------
+        gradient of the loss with respect to the input of this layer
+        shape (batch_size, in_rows, in_cols, in_channels)
+        """
+        ### BEGIN YOUR CODE ###
+
+        # perform a backward pass
+
+        # unpack the cache
+        Z, X = self.cache["Z"], self.cache["X"]
+        W, b = self.parameters["W"], self.parameters["b"]
+        
+        # compute the gradients of the loss w.r.t. all parameters as well as the
+        # input of the layer
+        dZ = self.activation.backward(Z, dLdY)
+        kernel_height, kernel_width, in_channels, out_channels = W.shape
+        n_examples, in_rows, in_cols, in_channels = X.shape
+        _, out_rows, out_cols, out_channels = Z.shape # also dZ.shape. Here _ is n_examples
+        # pad X and dX, same as in forward pass
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        dX_pad = np.zeros_like(X_pad)
+        dW = np.zeros_like(W)
+        db = np.zeros_like(b)
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_conv = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # same as in forward pass
+                # compute dW, db, dX
+                # dW[i, k, c, f] = sum_{d1, d2} dZ[d1, d2, f] * X[d1 + i, d2 + k, c]
+                dW += np.einsum("nf,nikc->ikcf", dZ[:, i, j, :], X_conv, optimize=True)
+                # db[f] = sum_{d1, d2} dZ[d1, d2, f]
+                db += np.einsum("nf->f", dZ[:, i, j, :], optimize=True).reshape(1, -1)
+                # dX[x, y, c] += sum_{d1, d2, f} dZ[d1, d2, f] * W[x - d1, y - d2, c, f]
+                dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                += np.einsum("nf,ikcf->nikc", dZ[:, i, j, :], W, optimize=True)
+                # unpad dX_pad to get dX
+                dX = dX_pad[:,
+                            self.pad[0] : in_rows + self.pad[0],
+                            self.pad[1] : in_cols + self.pad[1],
+                            :]
+
+        # store the gradients in `self.gradients`
+        # the gradient for self.parameters["W"] should be stored in
+        # self.gradients["W"], etc.
+        self.gradients["W"] = dW
+        self.gradients["b"] = db
+
+        ### END YOUR CODE ###
+
+        return dX
+
+\end{lstlisting}
+
+
+\section{Loss Function Implementations:}
+
+Implementation of \texttt{losses.CrossEntropy}:
+
+\begin{lstlisting}[language=Python]
+class CrossEntropy(Loss):
+    """Cross entropy loss function."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __call__(self, Y: np.ndarray, Y_hat: np.ndarray) -> float:
+        return self.forward(Y, Y_hat)
+
+    def forward(self, Y: np.ndarray, Y_hat: np.ndarray) -> float:
+        """Computes the loss for predictions `Y_hat` given one-hot encoded labels
+        `Y`.
+
+        Parameters
+        ----------
+        Y      one-hot encoded labels of shape (batch_size, num_classes)
+        Y_hat  model predictions in range (0, 1) of shape (batch_size, num_classes)
+
+        Returns
+        -------
+        a single float representing the loss
+        """
+        ### YOUR CODE HERE ###
+        # L = - 1 / m * \sum_i^m{y_i @ ln(y_hat_i)}
+        m = Y.shape[0]
+        loss = - (1 / m) * np.sum(Y * np.log(Y_hat + np.finfo(float).eps)) # elementwise multiplication
+        # y_i @ ln(y_hat_i) = sum over classes of y_ij * ln(y_hat_ij)
+        # then sum over all examples i,
+        # which is equivalent to `np.sum(Y * np.log(Y_hat))`
+        # `np.finfo(float).eps` is added to avoid log(0)
+        return loss
+
+    def backward(self, Y: np.ndarray, Y_hat: np.ndarray) -> np.ndarray:
+        """Backward pass of cross-entropy loss.
+        NOTE: This is correct ONLY when the loss function is SoftMax.
+
+        Parameters
+        ----------
+        Y      one-hot encoded labels of shape (batch_size, num_classes)
+        Y_hat  model predictions in range (0, 1) of shape (batch_size, num_classes)
+
+        Returns
+        -------
+        the gradient of the cross-entropy loss with respect to the vector of
+        predictions, `Y_hat`
+        """
+        ### YOUR CODE HERE ###
+        m = Y.shape[0]
+        dY_hat = - (1 / m) * (Y / Y_hat)  # Here Y / Y_hat is elementwise division
+        return dY_hat
+
+\end{lstlisting}
+
+
+\section{Model Implementations:}
+
+Implementation of \texttt{models.NeuralNetwork.forward}:
+
+\begin{lstlisting}[language=Python]
+    def forward(self, X: np.ndarray) -> np.ndarray:
+        """One forward pass through all the layers of the neural network.
+
+        Parameters
+        ----------
+        X  design matrix whose must match the input shape required by the
+           first layer
+
+        Returns
+        -------
+        forward pass output, matches the shape of the output of the last layer
+        """
+        ### YOUR CODE HERE ###
+        # Iterate through the network's layers.
+        # Input layer's input is X.
+        Y = X
+        for layer in self.layers:
+            Y = layer.forward(Y)
+        return Y
+
+\end{lstlisting}
+
+Implementation of \texttt{models.NeuralNetwork.backward}:
+
+\begin{lstlisting}[language=Python]
+    def backward(self, target: np.ndarray, out: np.ndarray) -> float:
+        """One backward pass through all the layers of the neural network.
+        During this phase we calculate the gradients of the loss with respect to
+        each of the parameters of the entire neural network. Most of the heavy
+        lifting is done by the `backward` methods of the layers, so this method
+        should be relatively simple. Also make sure to compute the loss in this
+        method and NOT in `self.forward`.
+
+        Note: Both input arrays have the same shape.
+
+        Parameters
+        ----------
+        target  the targets we are trying to fit to (e.g., training labels)
+        out     the predictions of the model on training data
+
+        Returns
+        -------
+        the loss of the model given the training inputs and targets
+        """
+        ### YOUR CODE HERE ###
+        # Compute the loss.
+        # Backpropagate through the network's layers.
+        # For output layer, the loss gradient is computed with target labels and the final output labels.
+        loss = self.loss.forward(target, out)
+        dY = self.loss.backward(target, out)
+        for layer in reversed(self.layers): # backward pass, so reverse order
+            dY = layer.backward(dY)
+        return loss
+
+\end{lstlisting}
+
+Implementation of \texttt{models.NeuralNetwork.predict}:
+
+\begin{lstlisting}[language=Python]
+    def predict(self, X: np.ndarray, Y: np.ndarray) -> Tuple[np.ndarray, float]:
+        """Make a forward and backward pass to calculate the predictions and
+        loss of the neural network on the given data.
+
+        Parameters
+        ----------
+        X  input features
+        Y  targets (same length as `X`)
+
+        Returns
+        -------
+        a tuple of the prediction and loss
+        """
+        ### YOUR CODE HERE ###
+        # Do a forward pass. Maybe use a function you already wrote?
+        # Get the loss. Remember that the `backward` function returns the loss.
+        Y_hat = self.forward(X)
+        loss = self.loss.forward(Y, Y_hat)
+        return (Y_hat, loss)
+
+\end{lstlisting}
+
+\end{document}

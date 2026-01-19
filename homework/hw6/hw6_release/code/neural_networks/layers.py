@@ -124,12 +124,14 @@ class FullyConnected(Layer):
 
         ### BEGIN YOUR CODE ###
 
-        W = self.init_weights(...)
-        b = ...
+        W = self.init_weights((self.n_in, self.n_out))
+        b = np.zeros((1, self.n_out))
 
         self.parameters = OrderedDict({"W": W, "b": b}) # DO NOT CHANGE THE KEYS
-        self.cache: OrderedDict = ...  # cache for backprop
-        self.gradients: OrderedDict = ...  # parameter gradients initialized to zero
+        self.cache: OrderedDict = OrderedDict({"Z": [], "X": []})  # cache for backprop
+        self.gradients: OrderedDict = OrderedDict(
+            {"W": np.zeros_like(W), "b": np.zeros_like(b)}
+        )  # parameter gradients initialized to zero
                                            # MUST HAVE THE SAME KEYS AS `self.parameters`
 
         ### END YOUR CODE ###
@@ -154,9 +156,12 @@ class FullyConnected(Layer):
         ### BEGIN YOUR CODE ###
         
         # perform an affine transformation and activation
-        out = ...
+        Z = X @ self.parameters["W"] + self.parameters["b"]
+        out = self.activation.forward(Z)
         
         # store information necessary for backprop in `self.cache`
+        self.cache["X"] = X
+        self.cache["Z"] = Z
 
         ### END YOUR CODE ###
 
@@ -182,15 +187,24 @@ class FullyConnected(Layer):
         ### BEGIN YOUR CODE ###
         
         # unpack the cache
+        Z, X = self.cache["Z"], self.cache["X"]
         
         # compute the gradients of the loss w.r.t. all parameters as well as the
         # input of the layer
-
-        dX = ...
+        dZ = self.activation.backward(Z, dLdY)
+        dX = dZ @ self.parameters["W"].T
+        dW = X.T @ dZ
+        # In section 4.2.1, we calculated dLdb = 1^T @ dLdz, 
+        # where 1 is a column of ones, shape of (m, 1), and m is the batch size.
+        # Here, 1^T @ dLdz = (1, m) @ (m, n_out) = (1, n_out),
+        # which is equivalent to summing dLdz over axis 0.
+        db = np.sum(dZ, axis=0, keepdims=True) 
 
         # store the gradients in `self.gradients`
         # the gradient for self.parameters["W"] should be stored in
         # self.gradients["W"], etc.
+        self.gradients["W"] = dW
+        self.gradients["b"] = db
 
         ### END YOUR CODE ###
 
@@ -270,8 +284,38 @@ class Conv2D(Layer):
         ### BEGIN YOUR CODE ###
 
         # implement a convolutional forward pass
+        # compute output dimensions
+        out_rows = (in_rows + 2 * self.pad[0] - kernel_height) // self.stride + 1
+        out_cols = (in_cols + 2 * self.pad[1] - kernel_width) // self.stride + 1
+        Z = np.zeros((n_examples, out_rows, out_cols, out_channels))
+        # first pad the input X
+        # X shape: (n_examples, in_rows, in_cols, in_channels)
+        # we need to pad the 2nd and 3rd dimensions (height and width)
+        # and keep the rest the same which is done by set to (0,0) for those dimensions.
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        # use np.einsum for the convolution operation
+        # Z[d1, d2, n] = (X conv W)[d1, d2, n]
+        # = sum_i sum_k sum_c W[i, k, c, n] * X[d1 + i, d2 + k, c] + b[n]
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_conv = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # the effective receptive field for the convolution w.r.t. output pixel (i,j). shape of (n_examples, kernel_height, kernel_width, in_channels)
+                # W.shape: kernel_height, kernel_width, in_channels, out_channels
+                # X.shape: n_examples, in_rows, in_cols, in_channels
+                # out.shape: n_examples, out_rows, out_cols, out_channels
+                # einsum:
+                # sum(kernel_height * in_rows)
+                # sum(kernel_width * in_cols)
+                # keep n_examples, out_channels
+                Z[:, i, j, :] = np.einsum("ijkl,nijk->nl", W, X_conv, optimize=True) + b
 
+        out = self.activation.forward(Z)
+        
         # cache any values required for backprop
+        self.cache["Z"] = Z
+        self.cache["X"] = X
 
         ### END YOUR CODE ###
 
@@ -295,6 +339,50 @@ class Conv2D(Layer):
         ### BEGIN YOUR CODE ###
 
         # perform a backward pass
+
+        # unpack the cache
+        Z, X = self.cache["Z"], self.cache["X"]
+        W, b = self.parameters["W"], self.parameters["b"]
+        
+        # compute the gradients of the loss w.r.t. all parameters as well as the
+        # input of the layer
+        dZ = self.activation.backward(Z, dLdY)
+        kernel_height, kernel_width, in_channels, out_channels = W.shape
+        n_examples, in_rows, in_cols, in_channels = X.shape
+        _, out_rows, out_cols, out_channels = Z.shape # also dZ.shape. Here _ is n_examples
+        # pad X and dX, same as in forward pass
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        dX_pad = np.zeros_like(X_pad)
+        dW = np.zeros_like(W)
+        db = np.zeros_like(b)
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_conv = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # same as in forward pass
+                # compute dW, db, dX
+                # dW[i, k, c, f] = sum_{d1, d2} dZ[d1, d2, f] * X[d1 + i, d2 + k, c]
+                dW += np.einsum("nf,nikc->ikcf", dZ[:, i, j, :], X_conv, optimize=True)
+                # db[f] = sum_{d1, d2} dZ[d1, d2, f]
+                db += np.einsum("nf->f", dZ[:, i, j, :], optimize=True).reshape(1, -1)
+                # dX[x, y, c] += sum_{d1, d2, f} dZ[d1, d2, f] * W[x - d1, y - d2, c, f]
+                dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                += np.einsum("nf,ikcf->nikc", dZ[:, i, j, :], W, optimize=True)
+                # unpad dX_pad to get dX
+                dX = dX_pad[:,
+                            self.pad[0] : in_rows + self.pad[0],
+                            self.pad[1] : in_cols + self.pad[1],
+                            :]
+
+        # store the gradients in `self.gradients`
+        # the gradient for self.parameters["W"] should be stored in
+        # self.gradients["W"], etc.
+        self.gradients["W"] = dW
+        self.gradients["b"] = db
 
         ### END YOUR CODE ###
 
@@ -363,8 +451,32 @@ class Pool2D(Layer):
         ### BEGIN YOUR CODE ###
 
         # implement the forward pass
+        kernel_height, kernel_width = self.kernel_shape
+        n_examples, in_rows, in_cols, channels = X.shape
+        out_rows = (in_rows + 2 * self.pad[0] - kernel_height) // self.stride + 1
+        out_cols = (in_cols + 2 * self.pad[1] - kernel_width) // self.stride + 1
+        # X shape: (n_examples, in_rows, in_cols, in_channels)
+        # we need to pad the 2nd and 3rd dimensions (height and width)
+        # and keep the rest the same which is done by set to (0,0) for those dimensions.
+        X_pad = np.pad(X, ((0, 0), (self.pad[0], self.pad[0]), (self.pad[1], self.pad[1]), (0, 0)), mode='constant')
+        X_pool = np.zeros((n_examples, out_rows, out_cols, channels))
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_pool_slice = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :] # the effective receptive field for the pooling w.r.t. output pixel (i,j). shape of (n_examples, kernel_height, kernel_width, in_channels)
+                if self.mode == "max":
+                    X_pool[:, i, j, :] = np.max(X_pool_slice, axis=(1, 2))
+                elif self.mode == "average":
+                    X_pool[:, i, j, :] = np.mean(X_pool_slice, axis=(1, 2))
 
         # cache any values required for backprop
+        self.cache["out_rows"] = out_rows
+        self.cache["out_cols"] = out_cols
+        self.cache["X_pad"] = X_pad
+        self.cache["p"] = self.pool_fn
+        self.cache["pool_shape"] = self.kernel_shape
 
         ### END YOUR CODE ###
 
@@ -386,6 +498,49 @@ class Pool2D(Layer):
         ### BEGIN YOUR CODE ###
 
         # perform a backward pass
+        # unpack the cache
+        out_rows, out_cols = self.cache["out_rows"], self.cache["out_cols"]
+        X_pad = self.cache["X_pad"]
+        pool_fn, pool_shape = self.cache["p"], self.cache["pool_shape"]
+
+        n_examples, padded_in_rows, padded_in_cols, channels = X_pad.shape
+        kernel_height, kernel_width = pool_shape
+
+        dX_pad = np.zeros_like(X_pad)
+        for i in range(out_rows):
+            for j in range(out_cols):
+                X_pool_slice = X_pad[:,
+                                i * self.stride : i * self.stride + kernel_height,
+                                j * self.stride : j * self.stride + kernel_width, 
+                                :]
+                if self.mode == "max":
+                    # create a mask of the same shape as X_pool_slice
+                    # where the max value indices are set to 1, rest are 0
+                    max_mask = (X_pool_slice == np.max(X_pool_slice, axis=(1, 2), keepdims=True))
+                    # for max pooling, gradient flows only to the neurons which achieved the max
+                    # all other neurons get zero gradient
+                    # which is equivalent to elementwise multiplying dLdY with the mask
+                    dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                    += np.einsum("nc,nijc->nijc", dLdY[:, i, j, :], max_mask, optimize=True)
+                elif self.mode == "average":
+                    # for average pooling, gradient is equally divided among all neurons
+                    # create a mask of the same shape as X_pool_slice
+                    # where all values are 1 / (kernel_height * kernel_width)
+                    avg_mask = np.ones_like(X_pool_slice) / (kernel_height * kernel_width)
+                    dX_pad[:,
+                        i * self.stride : i * self.stride + kernel_height,
+                        j * self.stride : j * self.stride + kernel_width,
+                        :] \
+                    += np.einsum("nc,nijc->nijc", dLdY[:, i, j, :], avg_mask, optimize=True)
+        
+        # unpad dX_pad to get dX
+        dX = dX_pad[:,
+                    self.pad[0] : padded_in_rows - self.pad[0],
+                    self.pad[1] : padded_in_cols - self.pad[1],
+                    :]
 
         ### END YOUR CODE ###
 
