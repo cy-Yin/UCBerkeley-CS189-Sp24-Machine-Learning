@@ -31,11 +31,13 @@ def plot_data(train_feats, train_labels):
         Displays plot of image locations, and first two PCA dimensions vs longitude
     """
     # Plot image locations (use marker='.' for better visibility)
+    plt.figure()
     plt.scatter(train_labels[:, 1], train_labels[:, 0], marker=".")
     plt.title('Image Locations')
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
     plt.show()
+    plt.savefig('q4a_image_locations.png')
 
     # Run PCA on training_feats
     ##### TODO(a): Your Code Here #####
@@ -43,6 +45,7 @@ def plot_data(train_feats, train_labels):
     transformed_feats = PCA(n_components=2).fit_transform(transformed_feats)
 
     # Plot images by first two PCA dimensions (use marker='.' for better visibility)
+    plt.figure()
     plt.scatter(transformed_feats[:, 0],     # Select first column
                 transformed_feats[:, 1],     # Select second column
                 c=train_labels[:, 1],
@@ -50,6 +53,7 @@ def plot_data(train_feats, train_labels):
     plt.colorbar(label='Longitude')
     plt.title('Image Features by Longitude after PCA')
     plt.show()
+    plt.savefig('q4a_image_features_pca.png')
 
 
 def grid_search(train_features, train_labels, test_features, test_labels, is_weighted=False, verbose=True):
@@ -88,7 +92,19 @@ def grid_search(train_features, train_labels, test_features, test_labels, is_wei
             y = test_labels[i]
 
             ##### TODO(d): Your Code Here #####
-            ...
+            if not is_weighted:
+                y_pred = np.mean(train_labels[nearest], axis=0)
+                lat_diff = (y[0] - y_pred[0]) * 69
+                lon_diff = (y[1] - y_pred[1]) * 52
+                e = np.sqrt(lat_diff ** 2 + lon_diff ** 2)
+            else:
+                dists = distances[i]
+                weights = 1 / (dists + 1e-8)  # Avoid division by zero
+                weights = weights / np.sum(weights)  # Normalize weights
+                y_pred = np.sum(train_labels[nearest] * weights[:, np.newaxis], axis=0)
+                lat_diff = (y[0] - y_pred[0]) * 69
+                lon_diff = (y[1] - y_pred[1]) * 52
+                e = np.sqrt(lat_diff ** 2 + lon_diff ** 2)
 
             errors.append(e)
         
@@ -99,11 +115,13 @@ def grid_search(train_features, train_labels, test_features, test_labels, is_wei
 
     # Plot error vs k for k Nearest Neighbors
     if verbose:
+        plt.figure()
         plt.plot(ks, mean_errors)
         plt.xlabel('k')
         plt.ylabel('Mean Displacement Error (miles)')
         plt.title('Mean Displacement Error (miles) vs. k in kNN')
         plt.show()
+        plt.savefig(f'q4{"d" if not is_weighted else "e"}_mean_displacement_error_vs_k{"_weighted" if is_weighted else ""}.png')
 
     return min(mean_errors)
 
@@ -133,11 +151,27 @@ def main():
 
     # Use knn to get the k nearest neighbors of the features of image 53633239060.jpg
     ##### TODO(c): Your Code Here #####
-    ...
+    test_image_file = '53633239060.jpg'
+    test_image_idx = np.where(test_files == test_image_file)
+    distances, indices = knn.kneighbors(test_features[test_image_idx], n_neighbors=3)
+    for i in range(3):
+        neighbor_idx = indices[0][i] # `distances`, `indices` have shape of (num_queries, num_neighbors). Here we only have one query, so we take `indices[0]`
+        neighbor_file = train_files[neighbor_idx]
+        print(f'Neighbor {i+1}: {neighbor_file}, Distance: {distances[0][i]:.4f}')
+        plt.figure()
+        plt.imshow(plt.imread(f'im2spain_images/{neighbor_file}'))
+        plt.axis('off')
+        plt.title(f'Neighbor {i + 1}: {neighbor_file}')
+        plt.savefig(f'q4b_neighbor_{i + 1}_{neighbor_file}.png')
 
     # Part D: establish a naive baseline of predicting the mean of the training set
     ##### TODO(d): Your Code Here #####
-    ...
+    # simply predicting the training set centroid (coordinate-wise average) location for every test image
+    train_centroid = np.mean(train_labels, axis=0)
+    lat_diffs = (test_labels[:, 0] - train_centroid[0]) * 69
+    lon_diffs = (test_labels[:, 1] - train_centroid[1]) * 52
+    e_baseline = np.mean(np.sqrt(lat_diffs ** 2 + lon_diffs ** 2)) # Euclidean distances
+    print(f'\nBaseline mean displacement error (miles): {e_baseline:.1f}')
 
     # Part E: complete grid_search to find the best value of k
     grid_search(train_features, train_labels, test_features, test_labels)
@@ -152,8 +186,16 @@ def main():
     for r in ratios:
         num_samples = int(r * len(train_features))
         ##### TODO(h): Your Code Here #####
-        ...
-
+        # Linear Regression
+        linReg = LinearRegression()
+        linReg.fit(train_features[:num_samples], train_labels[:num_samples])
+        predictions = linReg.predict(test_features)
+        lat_diffs = (test_labels[:, 0] - predictions[:, 0]) * 69
+        lon_diffs = (test_labels[:, 1] - predictions[:, 1]) * 52
+        e_lin = np.mean(np.sqrt(lat_diffs ** 2 + lon_diffs ** 2))
+        # kNN
+        e_nn = grid_search(train_features[:num_samples], train_labels[:num_samples],
+                           test_features, test_labels, is_weighted=True, verbose=False)
         mean_errors_lin.append(e_lin)
         mean_errors_nn.append(e_nn)
 
@@ -162,6 +204,7 @@ def main():
         print(f'kNN mean displacement error (miles): {e_nn:.1f}')
 
     # Plot error vs training set size
+    plt.figure()
     plt.plot(ratios, mean_errors_lin, label='lin. reg.')
     plt.plot(ratios, mean_errors_nn, label='kNN')
     plt.xlabel('Training Set Ratio')
@@ -169,6 +212,7 @@ def main():
     plt.title('Mean Displacement Error (miles) vs. Training Set Ratio')
     plt.legend()
     plt.show()
+    plt.savefig('q4g_MDE_vs_training_set_ratio_linReg_vs_kNN.png')
        
 
 if __name__ == '__main__':

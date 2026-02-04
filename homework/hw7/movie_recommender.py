@@ -45,14 +45,24 @@ def get_rated_idxs(R):
 # Part (c): SVD to learn low-dimensional vector representations
 def svd_lfm(R):
 
-    # Fill in the missing values in R
+    # Fill in the missing values in R with 0
     ##### TODO(c): Your Code Here #####
+    R_filled = R.copy()
+    R_filled[np.isnan(R_filled)] = 0
 
     # Compute the SVD of R
     ##### TODO(c): Your Code Here #####
+    U, D, V_T = scipy.linalg.svd(R_filled, full_matrices=False)
 
     # Construct user and movie representations
     ##### TODO(c): Your Code Here #####
+    # U: (num_users, r), np.diag(D): (r, r), V_T: (r, num_movies)
+    # (if we allow D to have zero eigenvalues, r = min(num_users, num_movies))
+    # here since num_users > num_movies, r = num_movies
+    # which means
+    # U @ np.diag(D): (num_users, r), V_T.T: (num_movies, r)
+    user_vecs = U @ np.diag(D)
+    movie_vecs = V_T.T
 
     return user_vecs, movie_vecs
 
@@ -61,6 +71,13 @@ def get_train_mse(R, user_vecs, movie_vecs):
 
     # Compute the training MSE loss
     ##### TODO(d): Your Code Here #####
+    mse_loss = 0
+    num_users, num_movies = R.shape
+    for i in range(num_users):
+        for j in range(num_movies):
+            if not np.isnan(R[i, j]):
+                pred_rating = user_vecs[i] @ movie_vecs[j]
+                mse_loss += (R[i, j] - pred_rating) ** 2
 
     return mse_loss
 
@@ -91,7 +108,7 @@ plt.savefig(fname='trval_accs.png', dpi=600, bbox_inches='tight')
 
 # Part (f): Learn better user/movie vector representations by minimizing loss
 # begin solution
-best_d = ... # TODO(f): Use best from part (e)
+best_d = 10 # TODO(f): Use best from part (e)
 # end solution
 np.random.seed(20)
 user_vecs = np.random.random((R.shape[0], best_d))
@@ -103,6 +120,12 @@ def update_user_vecs(user_vecs, movie_vecs, R, user_rated_idxs):
 
     # Update user_vecs to the loss-minimizing value
     ##### TODO(f): Your Code Here #####
+    for i in range(user_vecs.shape[0]):
+        rated_movie_vecs = movie_vecs[user_rated_idxs[i]]
+        rated_movie_ratings = R[i, user_rated_idxs[i]]
+        A = rated_movie_vecs.T @ rated_movie_vecs + np.identity(user_vecs.shape[1])
+        b = rated_movie_vecs.T @ rated_movie_ratings
+        user_vecs[i] = np.linalg.solve(A, b)
 
     return user_vecs
 
@@ -111,6 +134,12 @@ def update_movie_vecs(user_vecs, movie_vecs, R, movie_rated_idxs):
 
     # Update movie_vecs to the loss-minimizing value
     ##### TODO(f): Your Code Here #####
+    for j in range(movie_vecs.shape[0]):
+        rated_user_vecs = user_vecs[movie_rated_idxs[j]]
+        rated_movie_ratings = R[movie_rated_idxs[j], j]
+        A = rated_user_vecs.T @ rated_user_vecs + np.identity(movie_vecs.shape[1])
+        b = rated_movie_ratings @ rated_user_vecs
+        movie_vecs[j] = np.linalg.solve(A, b)
 
     return movie_vecs
 
